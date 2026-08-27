@@ -1,0 +1,17 @@
+{
+  "schema": "patch-ledger-provenance/v1",
+  "entries": [
+    {"path": ".github/workflows/ci.yml", "origin": "new-original"},
+    {"path": ".gitignore", "origin": "new-original"},
+    {"path": "LICENSE", "origin": "new-original"},
+    {"path": "provenance.json", "origin": "new-original"},
+    {"path": "pyproject.toml", "origin": "new-original"},
+    {"path": "scripts/release_scan.py", "origin": "new-original"},
+    {"path": "src/patch_ledger/__init__.py", "origin": "new-original"},
+    {"path": "src/patch_ledger/__main__.py", "origin": "new-original"},
+    {"path": "src/patch_ledger/cli.py", "origin": "new-original"},
+    {"path": "src/patch_ledger/foundation.py", "origin": "new-original"},
+    {"path": "tests/test_ci_contract.py", "origin": "new-original"},
+    {"path": "tests/test_cli.py", "origin": "new-original"}
+  ]
+}
