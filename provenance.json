@@ -12,6 +12,15 @@
     {"path": "src/patch_ledger/cli.py", "origin": "new-original"},
     {"path": "src/patch_ledger/foundation.py", "origin": "new-original"},
     {"path": "tests/test_ci_contract.py", "origin": "new-original"},
-    {"path": "tests/test_cli.py", "origin": "new-original"}
+    {"path": "tests/test_cli.py", "origin": "new-original"},
+    {"path": "src/patch_ledger/task_builder.py", "origin": "new-original"},
+    {"path": "tests/test_task_builder.py", "origin": "new-original"},
+    {"path": "tests/harbor_e2e.py", "origin": "new-original"},
+    {"path": "examples/synthetic-project/README.md", "origin": "new-original"},
+    {"path": "examples/synthetic-project/base/app.py", "origin": "new-original"},
+    {"path": "examples/synthetic-project/head/app.py", "origin": "new-original"},
+    {"path": "examples/synthetic-project/change.patch", "origin": "new-original"},
+    {"path": "examples/synthetic-project/test-command.txt", "origin": "new-original"},
+    {"path": "examples/synthetic-project/create-repo.sh", "origin": "new-original"}
   ]
 }

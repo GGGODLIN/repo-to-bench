@@ -27,6 +27,14 @@ class CiContractTests(unittest.TestCase):
     self.assertNotIn("Operating System :: Microsoft :: Windows", project)
     self.assertTrue(SCANNER.is_file())
 
+  def test_ci_runs_pinned_harbor_e2e_on_supported_python(self):
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    self.assertIn("  harbor-e2e:", workflow)
+    self.assertIn('python-version: "3.13"', workflow)
+    self.assertIn('python -m pip install "harbor==0.22.0"', workflow)
+    self.assertIn("PATCH_LEDGER_INSTALLED_E2E: \"1\"", workflow)
+    self.assertIn("python -m unittest tests.harbor_e2e", workflow)
+
   def test_release_scan_passes_current_intent_tracked_tree(self):
     result = subprocess.run(
       [sys.executable, str(SCANNER)],

@@ -1,0 +1,1 @@
+python3 -c "import app; assert app.answer() == 'new'"

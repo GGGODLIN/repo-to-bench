@@ -133,6 +133,36 @@ def scan_credentials(source: str, content: bytes) -> List[Dict[str, Any]]:
   return [item[2] for item in sorted(matches, key=lambda item: (item[2]["line"], item[2]["category"], item[2]["fingerprint"]))]
 
 
+def scan_credentials_bytes(source: str, content: bytes) -> List[Dict[str, Any]]:
+  safe_source = redact_path(source)
+  matches = []
+  for category, pattern, value_group in _SECRET_PATTERNS:
+    byte_pattern = re.compile(pattern.pattern.encode("ascii"), pattern.flags & ~re.UNICODE)
+    for match in byte_pattern.finditer(content):
+      start, end = match.span()
+      if any(not (end <= existing[0] or start >= existing[1]) for existing in matches):
+        continue
+      value = match.group(value_group)
+      line = content.count(b"\n", 0, start) + 1
+      matches.append((start, end, {
+        "category": category,
+        "fingerprint": "sha256:" + hashlib.sha256(value).hexdigest()[:12],
+        "line": line,
+        "path": safe_source,
+      }))
+  if matches:
+    return [item[2] for item in sorted(matches, key=lambda item: (item[2]["line"], item[2]["category"], item[2]["fingerprint"]))]
+  for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
+    try:
+      decoded = content.decode(encoding)
+    except UnicodeError:
+      continue
+    decoded_matches = scan_credentials(source, decoded.encode("utf-8"))
+    if decoded_matches:
+      return decoded_matches
+  return []
+
+
 def create_marker(path: Path, content: str, category: str, path_name: str) -> None:
   flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
   try:
