@@ -5,7 +5,9 @@ from typing import Optional, Sequence
 from .execution import ExecutionError, execute_plan, plan_execution
 from .foundation import FoundationError, clean_directory, redact_path, stage_input
 from .replay import ReplayError, replay_trajectory
+from .review import ReviewError, build_review
 from .task_builder import TaskBuilderError, build_task
+from .verdict import validate_verdict
 
 
 def filesystem_error_payload(fallback_path: str) -> dict:
@@ -50,6 +52,17 @@ def build_parser() -> argparse.ArgumentParser:
   execute.add_argument("--plan", required=True)
   execute.add_argument("--approve-digest", required=True)
   execute.add_argument("--allow-partial", action="store_true")
+  review = commands.add_parser("review-build")
+  review.add_argument("--execution-report", required=True)
+  review.add_argument("--candidate", action="append", required=True)
+  review.add_argument("--seed", required=True)
+  review.add_argument("--output-dir", required=True)
+  review.add_argument("--human-oracle")
+  review.add_argument("--allow-partial", action="store_true")
+  review.add_argument("--probe-isolation", action="store_true")
+  verdict = commands.add_parser("validate-verdict")
+  verdict.add_argument("--packet", required=True)
+  verdict.add_argument("--verdict", required=True)
   return parser
 
 
@@ -136,6 +149,29 @@ def main(arguments: Optional[Sequence[str]] = None) -> int:
       return 1
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
     return 0 if result["status"] in {"complete", "partial"} else 1
+  if options.command == "review-build":
+    try:
+      result = build_review(
+        execution_report=options.execution_report,
+        candidates=options.candidate,
+        seed=options.seed,
+        output_dir=options.output_dir,
+        human_oracle=options.human_oracle,
+        allow_partial=options.allow_partial,
+        probe_isolation=options.probe_isolation,
+      )
+    except ReviewError as error:
+      detail = {"category": error.category}
+      if error.path is not None:
+        detail["path"] = error.path
+      print(json.dumps({"error": detail}, sort_keys=True, separators=(",", ":")))
+      return 1
+    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    return 0
+  if options.command == "validate-verdict":
+    result = validate_verdict(options.packet, options.verdict)
+    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    return 0 if result["status"] == "valid" else 1
   if options.command == "clean":
     if not options.recursive:
       print(json.dumps({"error": {"category": "recursive_confirmation_required", "path": redact_path(options.path)}}, sort_keys=True, separators=(",", ":")))

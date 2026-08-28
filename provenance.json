@@ -33,6 +33,10 @@
     {"path": "tests/test_replay.py", "origin": "new-original"},
     {"path": "src/repo_to_bench/execution.py", "origin": "new-original"},
     {"path": "tests/fake_harbor_job.py", "origin": "new-original"},
-    {"path": "tests/test_execution.py", "origin": "new-original"}
+    {"path": "tests/test_execution.py", "origin": "new-original"},
+    {"path": "src/repo_to_bench/review.py", "origin": "new-original"},
+    {"path": "src/repo_to_bench/verdict.py", "origin": "new-original"},
+    {"path": "tests/fake_docker.py", "origin": "new-original"},
+    {"path": "tests/test_review.py", "origin": "new-original"}
   ]
 }
