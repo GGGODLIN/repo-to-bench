@@ -1,21 +1,47 @@
 # repo-to-bench
 
-Turn repository revisions into reproducible coding-agent benchmark tasks, Harbor runs, cross-agent replays, blind review packets, and validated verdicts.
+**English** | [繁體中文](README.zh-TW.md)
 
-`repo-to-bench` is a runner-neutral evaluation toolkit. Harbor is the only supported real-agent execution backend in v0.1.0, but Harbor is not the product identity and does not own the task, replay, review, verdict, or completeness contracts.
+**Turn a real fix from your Git history into a repeatable coding-agent benchmark.**
 
-## What the toolkit owns
+You fixed a bug in a real repository. You have the commit before the fix, the commit after it, and tests that prove the difference. Now you want to know whether a coding agent could solve the same problem without seeing your patch—and whether several agents can be compared without missing runs, leaked solutions, or reviewer bias.
+
+`repo-to-bench` packages that change as a benchmark task. Point it at the repository, the base revision, the known-good revision, and a test command. It checks that the base fails and the known-good solution passes before any agent result can count.
+
+The agent starts from the broken revision. Hidden tests and the oracle patch stay outside its workspace. After execution, the toolkit checks that every declared run produced a result, reconstructs supported Claude Code or Codex changes, and prepares anonymous candidates for review. A verdict is accepted only when its candidate IDs, ranking, outcomes, and derived flags match the review packet.
+
+This gives you a benchmark built from a problem you already understand—not a universal leaderboard or a synthetic puzzle detached from your codebase.
+
+## From a fix to a benchmark
+
+```text
+repository + broken revision + known-good revision + test command
+  → validate the task
+  → run coding agents in isolated environments
+  → reject missing or incomplete results
+  → reconstruct candidate changes
+  → build an anonymous review packet
+  → validate the verdict
+```
+
+A task is rejected if the known-good solution does not pass or the broken revision does not fail. An incomplete execution remains incomplete. An unsupported replay remains `INCOMPLETE`. Neither can silently enter the normal review path.
+
+Use it when you want to compare coding agents on problems from your own repositories, check whether another agent can reproduce a known fix, or build a private benchmark from real engineering work.
+
+## Where Harbor fits
+
+`repo-to-bench` is runner-neutral at the task, replay, review, verdict, and completeness boundaries. Harbor 0.22.0 is the only supported real-agent execution backend in v0.1.0.
 
 | repo-to-bench | Harbor v0.22.0 |
 |---|---|
-| Revision-to-task construction | Agent lifecycle and adapters |
-| Oracle-pass／base-fail validity gate | Docker environment lifecycle |
-| Immutable plan digest and approval boundary | Trial scheduling and concurrency |
-| Claude Code／Codex replay completeness | Retry and native resume |
-| Anonymous review packet and reveal mapping | Native trajectory and result persistence |
-| Verdict schema and validation | Verifier execution primitives |
+| Build a task from repository revisions | Run agent lifecycle and adapters |
+| Verify known-good-pass／base-fail validity | Manage Docker environments |
+| Bind execution to an approved plan digest | Schedule trials and concurrency |
+| Check matrix and replay completeness | Retry and resume native jobs |
+| Create anonymous review packets | Persist trajectories and results |
+| Validate verdicts | Execute verifier primitives |
 
-The project is not a Harbor fork, official Harbor extension, replacement framework, or runner marketplace.
+Harbor is the execution engine, not the product identity. This project is not a Harbor fork, official extension, replacement framework, or runner marketplace.
 
 ## Verified baseline
 
@@ -178,4 +204,4 @@ Original toolkit code is licensed under the [MIT License](/LICENSE). Harbor is a
 
 [`provenance.json`](/provenance.json) covers every tracked public file. The only migrated-modified source is the generic replay implementation, bound to its approved private source commit and SHA-256. All synthetic fixtures are newly authored and contain no private task, company, transcript, or credential material.
 
-Release verification for public head `bffe2a67226e9edf2547abdebde68c1341789228` passed a fresh clone with isolated `HOME`, 129 tests, a clean 39-file／70-history-object scan, the full no-cost skill smoke, Docker isolation probes, and [GitHub Actions](https://github.com/GGGODLIN/repo-to-bench/actions/runs/33144285266).
+The final [`v0.1.0` GitHub Actions run](https://github.com/GGGODLIN/repo-to-bench/actions/runs/33145413683) passed the Python 3.9／3.11／3.14 core matrix, 129 no-cost tests, eight Harbor end-to-end tests, and a clean 41-file／74-history-object release scan. The immediately preceding code-identical head also passed a fresh clone with isolated `HOME`, the full no-cost skill smoke, and Docker isolation probes.
