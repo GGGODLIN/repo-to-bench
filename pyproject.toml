@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "repo-to-bench"
 version = "0.1.0"
-description = "A runner-neutral toolkit for safe patch evaluation artifacts"
+description = "Turn repository revisions into reproducible coding-agent benchmark artifacts"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
 authors = [{ name = "GGGODLIN" }]

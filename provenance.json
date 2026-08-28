@@ -39,6 +39,8 @@
     {"path": "tests/fake_docker.py", "origin": "new-original"},
     {"path": "tests/test_review.py", "origin": "new-original"},
     {"path": ".claude/skills/repo-to-bench/SKILL.md", "origin": "new-original"},
-    {"path": ".claude/skills/repo-to-bench/scripts/synthetic_smoke.py", "origin": "new-original"}
+    {"path": ".claude/skills/repo-to-bench/scripts/synthetic_smoke.py", "origin": "new-original"},
+    {"path": "README.md", "origin": "new-original"},
+    {"path": "SECURITY.md", "origin": "new-original"}
   ]
 }
