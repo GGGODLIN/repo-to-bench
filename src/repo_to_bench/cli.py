@@ -2,6 +2,7 @@ import argparse
 import json
 from typing import Optional, Sequence
 
+from .execution import ExecutionError, execute_plan, plan_execution
 from .foundation import FoundationError, clean_directory, redact_path, stage_input
 from .replay import ReplayError, replay_trajectory
 from .task_builder import TaskBuilderError, build_task
@@ -38,6 +39,17 @@ def build_parser() -> argparse.ArgumentParser:
   replay.add_argument("--agent", choices=("claude-code", "codex"), required=True)
   replay.add_argument("--output-dir", required=True)
   replay.add_argument("--diagnostic-override", action="store_true")
+  plan = commands.add_parser("plan")
+  plan.add_argument("--task-root", required=True)
+  plan.add_argument("--agent", action="append", required=True)
+  plan.add_argument("--model", action="append", default=[])
+  plan.add_argument("--attempts", type=int, default=1)
+  plan.add_argument("--concurrency", type=int, default=1)
+  plan.add_argument("--output-dir", required=True)
+  execute = commands.add_parser("execute")
+  execute.add_argument("--plan", required=True)
+  execute.add_argument("--approve-digest", required=True)
+  execute.add_argument("--allow-partial", action="store_true")
   return parser
 
 
@@ -95,6 +107,35 @@ def main(arguments: Optional[Sequence[str]] = None) -> int:
       return 1
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
     return 0 if result["status"] == "COMPLETE" or options.diagnostic_override and result["status"] == "INCOMPLETE" else 1
+  if options.command == "plan":
+    try:
+      result = plan_execution(
+        task_root=options.task_root,
+        agents=options.agent,
+        models=options.model,
+        attempts=options.attempts,
+        concurrency=options.concurrency,
+        output_dir=options.output_dir,
+      )
+    except ExecutionError as error:
+      detail = {"category": error.category}
+      if error.path is not None:
+        detail["path"] = error.path
+      print(json.dumps({"error": detail}, sort_keys=True, separators=(",", ":")))
+      return 1
+    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    return 0
+  if options.command == "execute":
+    try:
+      result = execute_plan(options.plan, options.approve_digest, options.allow_partial)
+    except ExecutionError as error:
+      detail = {"category": error.category}
+      if error.path is not None:
+        detail["path"] = error.path
+      print(json.dumps({"error": detail}, sort_keys=True, separators=(",", ":")))
+      return 1
+    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    return 0 if result["status"] in {"complete", "partial"} else 1
   if options.command == "clean":
     if not options.recursive:
       print(json.dumps({"error": {"category": "recursive_confirmation_required", "path": redact_path(options.path)}}, sort_keys=True, separators=(",", ":")))

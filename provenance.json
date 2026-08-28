@@ -30,6 +30,9 @@
     {"path": "examples/replay-fixtures/unsupported.jsonl", "origin": "new-original"},
     {"path": "examples/replay-fixtures/malformed.jsonl", "origin": "new-original"},
     {"path": "src/repo_to_bench/replay.py", "origin": "migrated-modified", "source_id": "C01", "source_commit": "29f57ced47fce6c53a2a2e921182ae6e5a70f8e1", "source_sha256": "8516d0e5e3aec74466e8fa29aff7d3b69ae9a08186995f0c70ca0271f28129fe"},
-    {"path": "tests/test_replay.py", "origin": "new-original"}
+    {"path": "tests/test_replay.py", "origin": "new-original"},
+    {"path": "src/repo_to_bench/execution.py", "origin": "new-original"},
+    {"path": "tests/fake_harbor_job.py", "origin": "new-original"},
+    {"path": "tests/test_execution.py", "origin": "new-original"}
   ]
 }
