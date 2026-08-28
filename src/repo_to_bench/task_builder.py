@@ -18,8 +18,8 @@ HARBOR_VERSION = "0.22.0"
 HARBOR_SCHEMA_VERSION = "1.4"
 HARBOR_IMAGE = "python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a"
 GIT_PACKAGE_VERSION = "1:2.47.3-0+deb13u1"
-READY_MARKER = ".patch-ledger-ready"
-BUILD_LOCK = ".patch-ledger-build-lock"
+READY_MARKER = ".repo-to-bench-ready"
+BUILD_LOCK = ".repo-to-bench-build-lock"
 
 
 class TaskBuilderError(Exception):
@@ -220,8 +220,8 @@ def _execute(command: List[str], cwd: Path, environment: Dict[str, str], timeout
 
 
 def _run_gate(staging: Path, test_command: str, timeout: float) -> Dict[str, Any]:
-  with tempfile.TemporaryDirectory(prefix=".patch-ledger-gate-oracle-") as oracle_directory:
-    with tempfile.TemporaryDirectory(prefix=".patch-ledger-gate-base-") as base_directory:
+  with tempfile.TemporaryDirectory(prefix=".repo-to-bench-gate-oracle-") as oracle_directory:
+    with tempfile.TemporaryDirectory(prefix=".repo-to-bench-gate-base-") as base_directory:
       oracle_root = Path(oracle_directory)
       base_root = Path(base_directory)
       base_workspace = base_root / "workspace"
@@ -275,7 +275,7 @@ def _run_gate(staging: Path, test_command: str, timeout: float) -> Dict[str, Any
       base_status = base_test["status"]
       accepted = oracle_status == "passed" and base_status == "failed"
       return {
-        "schema": "patch-ledger-dual-gate/v1",
+        "schema": "repo-to-bench-dual-gate/v1",
         "verification": "deterministic-local",
         "paid_model_calls": 0,
         "oracle": {
@@ -305,7 +305,7 @@ def _task_toml(task_name: str, output_inputs: List[str]) -> str:
   lines.extend([
     "",
     "[task]",
-    f"name = {json.dumps('patch-ledger/' + task_name)}",
+    f"name = {json.dumps('repo-to-bench/' + task_name)}",
     "version = \"1.0.0\"",
     "description = \"Synthetic patch evaluation task\"",
     "",
@@ -472,7 +472,7 @@ def build_task(
   archive = _read_archive(repository, base)
   head_archive = _read_archive(repository, head)
   try:
-    with tempfile.TemporaryDirectory(prefix=".patch-ledger-head-") as directory:
+    with tempfile.TemporaryDirectory(prefix=".repo-to-bench-head-") as directory:
       head_workspace = Path(directory) / "workspace"
       _extract_archive(head_archive, head_workspace)
       _scan_artifacts(head_workspace)
@@ -494,7 +494,7 @@ def build_task(
       raise
     raise
   try:
-    staging = Path(tempfile.mkdtemp(prefix=".patch-ledger-build-", dir=str(run_root)))
+    staging = Path(tempfile.mkdtemp(prefix=".repo-to-bench-build-", dir=str(run_root)))
   except OSError as error:
     try:
       _release_build_lock(lock)
@@ -518,14 +518,14 @@ def build_task(
     gate = _run_gate(staging, test_command, timeout)
     _scan_artifacts(staging)
     manifest = {
-      "schema": "patch-ledger-task-manifest/v1",
+      "schema": "repo-to-bench-task-manifest/v1",
       "format": {
         "name": "harbor-task",
         "harbor_version": HARBOR_VERSION,
         "task_schema_version": HARBOR_SCHEMA_VERSION,
       },
       "environment": {"image": HARBOR_IMAGE, "git_package": GIT_PACKAGE_VERSION},
-      "task": {"name": "patch-ledger/" + task_name, "path": "task"},
+      "task": {"name": "repo-to-bench/" + task_name, "path": "task"},
       "revisions": {"base": base, "head": head, "patch_sha256": hashlib.sha256(patch).hexdigest()},
       "inputs": {
         "instruction": task_instruction.rstrip("\n"),
@@ -544,7 +544,7 @@ def build_task(
     _write_text(staging / "task-manifest.json", json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n")
     _write_text(staging / "dual-gate-report.json", json.dumps(gate, sort_keys=True, separators=(",", ":")) + "\n")
     metadata = {
-      "schema": "patch-ledger-controller-metadata/v1",
+      "schema": "repo-to-bench-controller-metadata/v1",
       "agent_workspace": "task/environment/workspace",
       "hidden_tests": "task/tests",
       "oracle": "task/solution",
@@ -555,7 +555,7 @@ def build_task(
     _write_text(staging / "controller" / "metadata.json", json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n")
     _write_text(
       staging / READY_MARKER,
-      "patch-ledger-ready/v1\n" + ("accepted" if gate["accepted"] else "rejected") + "\n",
+      "repo-to-bench-ready/v1\n" + ("accepted" if gate["accepted"] else "rejected") + "\n",
     )
     try:
       (staging / "source-base.tar").unlink()

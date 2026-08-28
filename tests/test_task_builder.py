@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from patch_ledger import cli
+from repo_to_bench import cli
 
 
 def git_command(repo, *arguments):
@@ -210,13 +210,13 @@ def create_synthetic_repo_with_symlink(directory):
 
 def run_builder(repo, base, head, output, test_command, output_inputs=None, timeout=30.0):
   environment = {"PATH": os.environ.get("PATH", "")}
-  if os.environ.get("PATCH_LEDGER_INSTALLED_E2E") != "1":
+  if os.environ.get("REPO_TO_BENCH_INSTALLED_E2E") != "1":
     environment["PYTHONPATH"] = str(SRC)
   return subprocess.run(
     [
       sys.executable,
       "-m",
-      "patch_ledger",
+      "repo_to_bench",
       "build-task",
       "--repo",
       str(repo),
@@ -260,7 +260,7 @@ class TaskBuilderTests(unittest.TestCase):
       ]
       stdout = StringIO()
       stderr = StringIO()
-      with patch("patch_ledger.task_builder.tempfile.mkdtemp", side_effect=OSError("staging")):
+      with patch("repo_to_bench.task_builder.tempfile.mkdtemp", side_effect=OSError("staging")):
         with redirect_stdout(stdout), redirect_stderr(stderr):
           return_code = cli.main(arguments)
 
@@ -290,11 +290,11 @@ class TaskBuilderTests(unittest.TestCase):
       original_rmtree = shutil.rmtree
 
       def fail_staging_cleanup(path, *args, **kwargs):
-        if ".patch-ledger-build-" in str(path):
+        if ".repo-to-bench-build-" in str(path):
           raise OSError("cleanup")
         return original_rmtree(path, *args, **kwargs)
 
-      with patch("patch_ledger.task_builder.shutil.rmtree", side_effect=fail_staging_cleanup):
+      with patch("repo_to_bench.task_builder.shutil.rmtree", side_effect=fail_staging_cleanup):
         with redirect_stdout(stdout), redirect_stderr(stderr):
           return_code = cli.main(arguments)
 
@@ -333,7 +333,7 @@ class TaskBuilderTests(unittest.TestCase):
           raise OSError("publish")
         return original_rename(source, destination)
 
-      with patch("patch_ledger.task_builder.os.rename", side_effect=fail_controller_publish):
+      with patch("repo_to_bench.task_builder.os.rename", side_effect=fail_controller_publish):
         with redirect_stdout(stdout), redirect_stderr(stderr):
           return_code = cli.main(arguments)
 
@@ -396,9 +396,9 @@ class TaskBuilderTests(unittest.TestCase):
       self.assertIn('{\"reward\":0}', test_script)
       manifest = json.loads((output / "task-manifest.json").read_text(encoding="utf-8"))
       report = json.loads((output / "dual-gate-report.json").read_text(encoding="utf-8"))
-      self.assertEqual(manifest["schema"], "patch-ledger-task-manifest/v1")
+      self.assertEqual(manifest["schema"], "repo-to-bench-task-manifest/v1")
       self.assertEqual(manifest["format"]["harbor_version"], "0.22.0")
-      self.assertEqual(report["schema"], "patch-ledger-dual-gate/v1")
+      self.assertEqual(report["schema"], "repo-to-bench-dual-gate/v1")
       self.assertTrue(report["accepted"])
 
   def test_unusable_output_root_returns_json_without_traceback(self):
@@ -472,10 +472,10 @@ class TaskBuilderTests(unittest.TestCase):
 
       self.assertEqual(result.returncode, 0, result.stderr)
       self.assertEqual(
-        (output / ".patch-ledger-ready").read_text(encoding="utf-8"),
-        "patch-ledger-ready/v1\naccepted\n",
+        (output / ".repo-to-bench-ready").read_text(encoding="utf-8"),
+        "repo-to-bench-ready/v1\naccepted\n",
       )
-      self.assertFalse((output / ".patch-ledger-build-lock").exists())
+      self.assertFalse((output / ".repo-to-bench-build-lock").exists())
 
   def test_output_inputs_are_root_level_harbor_artifacts(self):
     with tempfile.TemporaryDirectory() as directory:
@@ -569,7 +569,7 @@ class TaskBuilderTests(unittest.TestCase):
       )
       self.assertEqual(visible_files, ["app.py"])
       metadata = json.loads(controller_metadata.read_text(encoding="utf-8"))
-      self.assertEqual(metadata["schema"], "patch-ledger-controller-metadata/v1")
+      self.assertEqual(metadata["schema"], "repo-to-bench-controller-metadata/v1")
       self.assertEqual(metadata["agent_workspace"], "task/environment/workspace")
 
   def test_same_gate_result_rejects_task(self):

@@ -11,7 +11,7 @@ def filesystem_error_payload(fallback_path: str) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-  parser = argparse.ArgumentParser(prog="patch-ledger")
+  parser = argparse.ArgumentParser(prog="repo-to-bench")
   commands = parser.add_subparsers(dest="command", required=True)
   stage = commands.add_parser("stage")
   stage.add_argument("--input-root", required=True)

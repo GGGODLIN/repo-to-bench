@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from patch_ledger import cli
+from repo_to_bench import cli
 
 
 def run_cli(*arguments, home=None):
@@ -26,7 +26,7 @@ def run_cli(*arguments, home=None):
   if home is not None:
     environment["HOME"] = str(home)
   return subprocess.run(
-    [sys.executable, "-m", "patch_ledger", *arguments],
+    [sys.executable, "-m", "repo_to_bench", *arguments],
     cwd=ROOT,
     env=environment,
     capture_output=True,
@@ -79,7 +79,7 @@ class StageCliTests(unittest.TestCase):
         (run_root / "staged" / "hello.txt").read_text(encoding="utf-8"),
         "hello\n",
       )
-      self.assertTrue((run_root / ".patch-ledger-run").is_file())
+      self.assertTrue((run_root / ".repo-to-bench-run").is_file())
 
   def test_tmp_system_alias_can_be_used_as_run_root(self):
     if sys.platform != "darwin":
@@ -247,8 +247,8 @@ class StageCliTests(unittest.TestCase):
 
       self.assertEqual(result.returncode, 0, result.stderr)
       self.assertEqual(stat.S_IMODE(run_root.stat().st_mode), 0o700)
-      self.assertEqual(stat.S_IMODE((run_root / ".patch-ledger-run").stat().st_mode), 0o600)
-      self.assertEqual(stat.S_IMODE((run_root / "staged" / ".patch-ledger-owned").stat().st_mode), 0o600)
+      self.assertEqual(stat.S_IMODE((run_root / ".repo-to-bench-run").stat().st_mode), 0o600)
+      self.assertEqual(stat.S_IMODE((run_root / "staged" / ".repo-to-bench-owned").stat().st_mode), 0o600)
 
   def test_nested_generated_directories_use_owner_only_permissions(self):
     with tempfile.TemporaryDirectory() as directory:
@@ -341,9 +341,9 @@ class StageCliTests(unittest.TestCase):
       input_root = workspace / "input"
       run_root = workspace / "run"
       input_root.mkdir()
-      (input_root / ".patch-ledger-owned").write_text("hello\n", encoding="utf-8")
+      (input_root / ".repo-to-bench-owned").write_text("hello\n", encoding="utf-8")
       manifest = workspace / "manifest.json"
-      manifest.write_text(json.dumps({"source": ".patch-ledger-owned"}), encoding="utf-8")
+      manifest.write_text(json.dumps({"source": ".repo-to-bench-owned"}), encoding="utf-8")
 
       result = run_cli(
         "stage",
@@ -359,7 +359,7 @@ class StageCliTests(unittest.TestCase):
       self.assertEqual(json.loads(result.stdout), {
         "error": {
           "category": "unsafe_path",
-          "path": ".patch-ledger-owned",
+          "path": ".repo-to-bench-owned",
         },
       })
       self.assertFalse(run_root.exists())
@@ -370,7 +370,7 @@ class StageCliTests(unittest.TestCase):
       input_root = workspace / "input"
       run_root = workspace / "run"
       input_root.mkdir()
-      source = ".PATCH-LEDGER-owned"
+      source = ".REPO-TO-BENCH-owned"
       (input_root / source).write_text("hello\n", encoding="utf-8")
       manifest = workspace / "manifest.json"
       manifest.write_text(json.dumps({"source": source}), encoding="utf-8")
@@ -809,7 +809,7 @@ class StageCliTests(unittest.TestCase):
       run_root = workspace / "run"
       target = run_root / "unmarked"
       target.mkdir(parents=True)
-      (run_root / ".patch-ledger-run").write_text("patch-ledger-run/v1\n", encoding="utf-8")
+      (run_root / ".repo-to-bench-run").write_text("repo-to-bench-run/v1\n", encoding="utf-8")
       (target / "keep.txt").write_text("keep\n", encoding="utf-8")
 
       result = run_cli(
@@ -839,10 +839,10 @@ class StageCliTests(unittest.TestCase):
       run_root.mkdir()
       outside_root.mkdir()
       target.mkdir()
-      (run_root / ".patch-ledger-run").write_text("patch-ledger-run/v1\n", encoding="utf-8")
+      (run_root / ".repo-to-bench-run").write_text("repo-to-bench-run/v1\n", encoding="utf-8")
       external_marker = outside_root / "marker.txt"
-      external_marker.write_text("patch-ledger-owned/v1\n", encoding="utf-8")
-      (target / ".patch-ledger-owned").symlink_to(external_marker)
+      external_marker.write_text("repo-to-bench-owned/v1\n", encoding="utf-8")
+      (target / ".repo-to-bench-owned").symlink_to(external_marker)
       (target / "keep.txt").write_text("keep\n", encoding="utf-8")
 
       result = run_cli(
@@ -858,11 +858,11 @@ class StageCliTests(unittest.TestCase):
       self.assertEqual(json.loads(result.stdout), {
         "error": {
           "category": "symlink_escape",
-          "path": "staged/.patch-ledger-owned",
+          "path": "staged/.repo-to-bench-owned",
         },
       })
       self.assertTrue((target / "keep.txt").is_file())
-      self.assertEqual(external_marker.read_text(encoding="utf-8"), "patch-ledger-owned/v1\n")
+      self.assertEqual(external_marker.read_text(encoding="utf-8"), "repo-to-bench-owned/v1\n")
 
   def test_clean_rejects_run_root_symlink_before_external_mutation(self):
     with tempfile.TemporaryDirectory() as directory:
@@ -872,8 +872,8 @@ class StageCliTests(unittest.TestCase):
       target = external_root / "staged"
       external_root.mkdir()
       target.mkdir()
-      (external_root / ".patch-ledger-run").write_text("patch-ledger-run/v1\n", encoding="utf-8")
-      (target / ".patch-ledger-owned").write_text("patch-ledger-owned/v1\n", encoding="utf-8")
+      (external_root / ".repo-to-bench-run").write_text("repo-to-bench-run/v1\n", encoding="utf-8")
+      (target / ".repo-to-bench-owned").write_text("repo-to-bench-owned/v1\n", encoding="utf-8")
       (target / "keep.txt").write_text("keep\n", encoding="utf-8")
       run_link.symlink_to(external_root, target_is_directory=True)
 
@@ -972,11 +972,11 @@ class StageCliTests(unittest.TestCase):
       target = run_root / "staged"
       run_root.mkdir()
       target.mkdir()
-      (run_root / ".patch-ledger-run").write_text("patch-ledger-run/v1\n", encoding="utf-8")
-      (target / ".patch-ledger-owned").write_text("patch-ledger-owned/v1\n", encoding="utf-8")
+      (run_root / ".repo-to-bench-run").write_text("repo-to-bench-run/v1\n", encoding="utf-8")
+      (target / ".repo-to-bench-owned").write_text("repo-to-bench-owned/v1\n", encoding="utf-8")
       (target / "keep.txt").write_text("keep\n", encoding="utf-8")
 
-      with patch("patch_ledger.foundation.shutil.rmtree", side_effect=OSError("remove failed")):
+      with patch("repo_to_bench.foundation.shutil.rmtree", side_effect=OSError("remove failed")):
         return_code, stdout, stderr = run_main(
           "clean",
           "--run-root",
@@ -1063,9 +1063,9 @@ class StageCliTests(unittest.TestCase):
     with tempfile.TemporaryDirectory() as directory:
       workspace = Path(directory)
       run_root = workspace / "run"
-      target = run_root / ".PATCH-LEDGER-owned"
+      target = run_root / ".REPO-TO-BENCH-owned"
       run_root.mkdir()
-      (run_root / ".patch-ledger-run").write_text("patch-ledger-run/v1\n", encoding="utf-8")
+      (run_root / ".repo-to-bench-run").write_text("repo-to-bench-run/v1\n", encoding="utf-8")
       target.mkdir()
       (target / "keep.txt").write_text("keep\n", encoding="utf-8")
 
@@ -1074,7 +1074,7 @@ class StageCliTests(unittest.TestCase):
         "--run-root",
         str(run_root),
         "--path",
-        ".PATCH-LEDGER-owned",
+        ".REPO-TO-BENCH-owned",
         "--recursive",
       )
 
@@ -1082,7 +1082,7 @@ class StageCliTests(unittest.TestCase):
       self.assertEqual(json.loads(result.stdout), {
         "error": {
           "category": "unsafe_path",
-          "path": ".PATCH-LEDGER-owned",
+          "path": ".REPO-TO-BENCH-owned",
         },
       })
       self.assertEqual(result.stderr, "")
@@ -1205,7 +1205,7 @@ class StageCliTests(unittest.TestCase):
       })
       self.assertTrue((run_root / "keep.txt").is_file())
       self.assertFalse((run_root / "staged").exists())
-      self.assertFalse((run_root / ".patch-ledger-run").exists())
+      self.assertFalse((run_root / ".repo-to-bench-run").exists())
 
   def test_unusable_run_root_is_reported_as_redacted_json_without_traceback(self):
     with tempfile.TemporaryDirectory() as directory:
@@ -1309,7 +1309,7 @@ class StageCliTests(unittest.TestCase):
       manifest = workspace / "manifest.json"
       manifest.write_text(json.dumps({"source": "hello.txt"}), encoding="utf-8")
 
-      with patch("patch_ledger.foundation.tempfile.mkstemp", side_effect=OSError("publish failed")):
+      with patch("repo_to_bench.foundation.tempfile.mkstemp", side_effect=OSError("publish failed")):
         return_code, stdout, stderr = run_main(
           "stage",
           "--input-root",
@@ -1336,7 +1336,7 @@ class StageCliTests(unittest.TestCase):
       run_root = workspace / "run"
       input_root.mkdir()
       run_root.mkdir()
-      (run_root / ".patch-ledger-run").write_bytes(b"\xff\xfe")
+      (run_root / ".repo-to-bench-run").write_bytes(b"\xff\xfe")
       (input_root / "hello.txt").write_text("hello\n", encoding="utf-8")
       manifest = workspace / "manifest.json"
       manifest.write_text(json.dumps({"source": "hello.txt"}), encoding="utf-8")
@@ -1370,7 +1370,7 @@ class StageCliTests(unittest.TestCase):
       input_root.mkdir()
       run_root.mkdir()
       outside_root.mkdir()
-      (run_root / ".patch-ledger-run").write_text("patch-ledger-run/v1\n", encoding="utf-8")
+      (run_root / ".repo-to-bench-run").write_text("repo-to-bench-run/v1\n", encoding="utf-8")
       (run_root / "staged").symlink_to(outside_root, target_is_directory=True)
       (input_root / "hello.txt").write_text("hello\n", encoding="utf-8")
       manifest = workspace / "manifest.json"
@@ -1394,7 +1394,7 @@ class StageCliTests(unittest.TestCase):
         },
       })
       self.assertFalse((outside_root / "hello.txt").exists())
-      self.assertFalse((outside_root / ".patch-ledger-owned").exists())
+      self.assertFalse((outside_root / ".repo-to-bench-owned").exists())
 
   def test_existing_staged_file_is_not_overwritten(self):
     with tempfile.TemporaryDirectory() as directory:
@@ -1452,8 +1452,8 @@ class StageCliTests(unittest.TestCase):
       outside_root.mkdir()
       staged = run_root / "staged"
       staged.mkdir()
-      (run_root / ".patch-ledger-run").write_text("patch-ledger-run/v1\n", encoding="utf-8")
-      (staged / ".patch-ledger-owned").write_text("patch-ledger-owned/v1\n", encoding="utf-8")
+      (run_root / ".repo-to-bench-run").write_text("repo-to-bench-run/v1\n", encoding="utf-8")
+      (staged / ".repo-to-bench-owned").write_text("repo-to-bench-owned/v1\n", encoding="utf-8")
       (staged / "nested").symlink_to(outside_root, target_is_directory=True)
       (input_root / "nested").mkdir()
       (input_root / "nested" / "hello.txt").write_text("hello\n", encoding="utf-8")
@@ -1490,10 +1490,10 @@ class StageCliTests(unittest.TestCase):
       outside_root.mkdir()
       staged = run_root / "staged"
       staged.mkdir()
-      (run_root / ".patch-ledger-run").write_text("patch-ledger-run/v1\n", encoding="utf-8")
+      (run_root / ".repo-to-bench-run").write_text("repo-to-bench-run/v1\n", encoding="utf-8")
       external_marker = outside_root / "marker.txt"
       external_marker.write_text("external\n", encoding="utf-8")
-      (staged / ".patch-ledger-owned").symlink_to(external_marker)
+      (staged / ".repo-to-bench-owned").symlink_to(external_marker)
       (input_root / "hello.txt").write_text("hello\n", encoding="utf-8")
       manifest = workspace / "manifest.json"
       manifest.write_text(json.dumps({"source": "hello.txt"}), encoding="utf-8")
@@ -1512,7 +1512,7 @@ class StageCliTests(unittest.TestCase):
       self.assertEqual(json.loads(result.stdout), {
         "error": {
           "category": "symlink_escape",
-          "path": "staged/.patch-ledger-owned",
+          "path": "staged/.repo-to-bench-owned",
         },
       })
       self.assertEqual(external_marker.read_text(encoding="utf-8"), "external\n")
@@ -1525,10 +1525,10 @@ class StageCliTests(unittest.TestCase):
       target = run_root / "staged"
       run_root.mkdir()
       target.mkdir()
-      (run_root / ".patch-ledger-run").write_text("patch-ledger-run/v1\n", encoding="utf-8")
+      (run_root / ".repo-to-bench-run").write_text("repo-to-bench-run/v1\n", encoding="utf-8")
       external_marker = workspace / "external-marker"
-      external_marker.write_text("patch-ledger-owned/v1\n", encoding="utf-8")
-      os.link(external_marker, target / ".patch-ledger-owned")
+      external_marker.write_text("repo-to-bench-owned/v1\n", encoding="utf-8")
+      os.link(external_marker, target / ".repo-to-bench-owned")
       (target / "keep.txt").write_text("keep\n", encoding="utf-8")
 
       result = run_cli(
@@ -1558,10 +1558,10 @@ class StageCliTests(unittest.TestCase):
       run_root.mkdir()
       target.mkdir()
       external_marker = workspace / "external-marker"
-      external_marker.write_text("patch-ledger-run/v1\n", encoding="utf-8")
+      external_marker.write_text("repo-to-bench-run/v1\n", encoding="utf-8")
       external_marker.chmod(0o644)
-      os.link(external_marker, run_root / ".patch-ledger-run")
-      (target / ".patch-ledger-owned").write_text("patch-ledger-owned/v1\n", encoding="utf-8")
+      os.link(external_marker, run_root / ".repo-to-bench-run")
+      (target / ".repo-to-bench-owned").write_text("repo-to-bench-owned/v1\n", encoding="utf-8")
       (target / "keep.txt").write_text("keep\n", encoding="utf-8")
 
       result = run_cli(
@@ -1592,11 +1592,11 @@ class StageCliTests(unittest.TestCase):
       input_root.mkdir()
       run_root.mkdir()
       staged.mkdir()
-      (run_root / ".patch-ledger-run").write_text("patch-ledger-run/v1\n", encoding="utf-8")
+      (run_root / ".repo-to-bench-run").write_text("repo-to-bench-run/v1\n", encoding="utf-8")
       external_marker = workspace / "external-marker"
-      external_marker.write_text("patch-ledger-owned/v1\n", encoding="utf-8")
+      external_marker.write_text("repo-to-bench-owned/v1\n", encoding="utf-8")
       external_marker.chmod(0o644)
-      os.link(external_marker, staged / ".patch-ledger-owned")
+      os.link(external_marker, staged / ".repo-to-bench-owned")
       (input_root / "hello.txt").write_text("hello\n", encoding="utf-8")
       manifest = workspace / "manifest.json"
       manifest.write_text(json.dumps({"source": "hello.txt"}), encoding="utf-8")
@@ -1629,9 +1629,9 @@ class StageCliTests(unittest.TestCase):
       input_root.mkdir()
       run_root.mkdir()
       external_marker = workspace / "external-marker"
-      external_marker.write_text("patch-ledger-run/v1\n", encoding="utf-8")
+      external_marker.write_text("repo-to-bench-run/v1\n", encoding="utf-8")
       external_marker.chmod(0o644)
-      os.link(external_marker, run_root / ".patch-ledger-run")
+      os.link(external_marker, run_root / ".repo-to-bench-run")
       (input_root / "hello.txt").write_text("hello\n", encoding="utf-8")
       manifest = workspace / "manifest.json"
       manifest.write_text(json.dumps({"source": "hello.txt"}), encoding="utf-8")

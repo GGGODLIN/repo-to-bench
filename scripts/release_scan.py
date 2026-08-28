@@ -8,7 +8,7 @@ import stat
 import subprocess
 from typing import Any, Dict, List, Tuple
 
-from patch_ledger.foundation import FoundationError, redact_path, scan_credentials
+from repo_to_bench.foundation import FoundationError, redact_path, scan_credentials
 
 
 ROOT = Path(__file__).resolve().parents[1]

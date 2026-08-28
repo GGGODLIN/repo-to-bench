@@ -21,7 +21,7 @@ class CiContractTests(unittest.TestCase):
     self.assertNotIn("HOME: ${{ runner.temp }}", workflow)
     self.assertIn("HOME=$RUNNER_TEMP/isolated-home", workflow)
     self.assertIn("GITHUB_ENV", workflow)
-    self.assertIn("patch-ledger --help", workflow)
+    self.assertIn("repo-to-bench --help", workflow)
     self.assertIn("python scripts/release_scan.py", workflow)
     self.assertIn("Operating System :: POSIX", project)
     self.assertNotIn("Operating System :: Microsoft :: Windows", project)
@@ -32,7 +32,7 @@ class CiContractTests(unittest.TestCase):
     self.assertIn("  harbor-e2e:", workflow)
     self.assertIn('python-version: "3.13"', workflow)
     self.assertIn('python -m pip install "harbor==0.22.0"', workflow)
-    self.assertIn("PATCH_LEDGER_INSTALLED_E2E: \"1\"", workflow)
+    self.assertIn("REPO_TO_BENCH_INSTALLED_E2E: \"1\"", workflow)
     self.assertIn("python -m unittest tests.harbor_e2e", workflow)
 
   def test_release_scan_passes_current_intent_tracked_tree(self):

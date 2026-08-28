@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "patch-ledger"
+name = "repo-to-bench"
 version = "0.1.0"
 description = "A runner-neutral toolkit for safe patch evaluation artifacts"
 requires-python = ">=3.9"
@@ -15,7 +15,7 @@ classifiers = [
 ]
 
 [project.scripts]
-patch-ledger = "patch_ledger.cli:main"
+repo-to-bench = "repo_to_bench.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

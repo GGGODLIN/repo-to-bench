@@ -11,8 +11,8 @@ import tempfile
 from typing import Any, Dict, List, Optional, Union
 
 
-RUN_MARKER = ".patch-ledger-run"
-OWNED_MARKER = ".patch-ledger-owned"
+RUN_MARKER = ".repo-to-bench-run"
+OWNED_MARKER = ".repo-to-bench-owned"
 
 
 _ASSIGNMENT_KEY = r"(?:[a-z0-9]+[_-])*(?:api[_-]?key|access[_-]?(?:key|token)|token|secret(?:[_-]?key)?|password|passwd|private[_-]?key)(?:[_-][a-z0-9]+)*"
@@ -47,7 +47,7 @@ def validate_source(source: object) -> str:
     raise FoundationError("unsafe_path", safe_source)
   normalized = source.replace("\\", "/")
   parts = normalized.split("/")
-  if normalized in {".", ""} or Path(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute() or any(part in {"", ".", ".."} or part.casefold().startswith(".patch-ledger-") for part in parts):
+  if normalized in {".", ""} or Path(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute() or any(part in {"", ".", ".."} or part.casefold().startswith(".repo-to-bench-") for part in parts):
     raise FoundationError("unsafe_path", safe_source)
   return normalized
 
@@ -257,16 +257,16 @@ def prepare_run_directory(run_root: Union[str, Path]) -> Path:
     if not marker.exists():
       if any(run_directory.iterdir()):
         raise FoundationError("unowned_run_root", ".")
-      create_marker(marker, "patch-ledger-run/v1\n", "unowned_run_root", ".")
+      create_marker(marker, "repo-to-bench-run/v1\n", "unowned_run_root", ".")
     else:
-      verify_marker(marker, "patch-ledger-run/v1\n", "unowned_run_root", ".")
+      verify_marker(marker, "repo-to-bench-run/v1\n", "unowned_run_root", ".")
     run_directory.chmod(0o700)
     marker.chmod(0o600)
     return run_directory
   run_directory.mkdir(parents=True, exist_ok=False)
   run_directory.chmod(0o700)
   marker = run_directory / RUN_MARKER
-  create_marker(marker, "patch-ledger-run/v1\n", "unowned_run_root", ".")
+  create_marker(marker, "repo-to-bench-run/v1\n", "unowned_run_root", ".")
   return run_directory
 
 
@@ -318,9 +318,9 @@ def prepare_staged_directory(run_directory: Path) -> Path:
   if not owned_marker.exists():
     if any(staged_directory.iterdir()):
       raise FoundationError("unowned_staged_directory", "staged")
-    create_marker(owned_marker, "patch-ledger-owned/v1\n", "unowned_staged_directory", "staged")
+    create_marker(owned_marker, "repo-to-bench-owned/v1\n", "unowned_staged_directory", "staged")
   else:
-    verify_marker(owned_marker, "patch-ledger-owned/v1\n", "unowned_staged_directory", "staged")
+    verify_marker(owned_marker, "repo-to-bench-owned/v1\n", "unowned_staged_directory", "staged")
   staged_directory.chmod(0o700)
   owned_marker.chmod(0o600)
   return staged_directory
@@ -343,7 +343,7 @@ def prepare_destination_parent(run_directory: Path, source: str) -> Path:
 def publish_file(destination: Path, content: bytes, destination_name: str) -> None:
   descriptor, temporary_name = tempfile.mkstemp(
     dir=destination.parent,
-    prefix=".patch-ledger-",
+    prefix=".repo-to-bench-",
     suffix=".tmp",
   )
   try:
@@ -398,7 +398,7 @@ def verify_run_directory(run_root: Union[str, Path]) -> Path:
     raise FoundationError("unowned_run_root", ".")
   run_directory = requested.resolve()
   marker = run_directory / RUN_MARKER
-  verify_marker(marker, "patch-ledger-run/v1\n", "unowned_run_root", ".")
+  verify_marker(marker, "repo-to-bench-run/v1\n", "unowned_run_root", ".")
   return run_directory
 
 
@@ -417,7 +417,7 @@ def clean_directory(run_root: Union[str, Path], path: str) -> Dict[str, str]:
   owned_marker = target / OWNED_MARKER
   if owned_marker.is_symlink():
     raise FoundationError("symlink_escape", relative_path + "/" + OWNED_MARKER)
-  verify_marker(owned_marker, "patch-ledger-owned/v1\n", "unmarked_recursive_delete", relative_path)
+  verify_marker(owned_marker, "repo-to-bench-owned/v1\n", "unmarked_recursive_delete", relative_path)
   try:
     shutil.rmtree(target)
   except OSError:
