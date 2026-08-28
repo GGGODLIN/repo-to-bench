@@ -5,7 +5,9 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -32,10 +34,19 @@ class TaskBuilderError(Exception):
 
 def _git_environment() -> Dict[str, str]:
   blocked = {
-    "GIT_EXTERNAL_DIFF",
-    "GIT_DIFF_OPTS",
-    "GIT_PAGER",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
     "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_DIR",
+    "GIT_DIFF_OPTS",
+    "GIT_EXTERNAL_DIFF",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PAGER",
+    "GIT_WORK_TREE",
   }
   environment = {
     key: value
@@ -46,6 +57,100 @@ def _git_environment() -> Dict[str, str]:
   }
   environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_PAGER": ":", "GIT_TERMINAL_PROMPT": "0"})
   return environment
+
+
+def _safe_git_directory(path: Path) -> bool:
+  try:
+    details = path.lstat()
+  except OSError:
+    return False
+  return stat.S_ISDIR(details.st_mode) and not stat.S_ISLNK(details.st_mode)
+
+
+def _resolved_git_path(repo: Path, value: str) -> Path:
+  path = Path(value)
+  if not path.is_absolute():
+    path = repo / path
+  try:
+    return path.resolve(strict=True)
+  except (OSError, RuntimeError) as error:
+    raise TaskBuilderError("invalid_repo") from error
+
+
+def _registered_worktree(repo: Path, git_dir: Path, common_dir: Path) -> bool:
+  worktrees = common_dir / "worktrees"
+  if not _safe_git_directory(worktrees):
+    return False
+  try:
+    git_dir.relative_to(worktrees)
+  except ValueError:
+    return False
+  try:
+    entries = list(worktrees.iterdir())
+  except OSError:
+    return False
+  for entry in entries:
+    if entry.resolve() != git_dir:
+      continue
+    if not _safe_git_directory(entry):
+      return False
+    marker = entry / "gitdir"
+    try:
+      marker_details = marker.lstat()
+      if not stat.S_ISREG(marker_details.st_mode) or stat.S_ISLNK(marker_details.st_mode):
+        return False
+      marker_text = marker.read_text(encoding="utf-8").strip()
+      target_value = marker_text.removeprefix("gitdir: ")
+      if not target_value:
+        return False
+      target = Path(target_value)
+      if not target.is_absolute():
+        target = entry / target
+      return target.resolve(strict=True) == (repo / ".git").resolve(strict=True)
+    except (OSError, RuntimeError, UnicodeError):
+      return False
+  return False
+
+
+def _validate_git_object_store(git_dir: Path, common_dir: Path) -> None:
+  if not _safe_git_directory(common_dir):
+    raise TaskBuilderError("invalid_repo")
+  objects = common_dir / "objects"
+  if not _safe_git_directory(objects):
+    raise TaskBuilderError("invalid_repo")
+  for name in ("alternates", "http-alternates"):
+    alternate = objects / "info" / name
+    try:
+      if alternate.exists() or alternate.is_symlink():
+        raise TaskBuilderError("invalid_repo")
+    except OSError as error:
+      raise TaskBuilderError("invalid_repo") from error
+  if git_dir != common_dir and not _safe_git_directory(git_dir):
+    raise TaskBuilderError("invalid_repo")
+
+
+def _validate_git_layout(repo: Path) -> None:
+  marker = repo / ".git"
+  try:
+    marker_details = marker.lstat()
+  except OSError as error:
+    raise TaskBuilderError("invalid_repo") from error
+  try:
+    git_dir = _resolved_git_path(repo, str(_run_git(repo, ["rev-parse", "--git-dir"]).strip()))
+    common_dir = _resolved_git_path(repo, str(_run_git(repo, ["rev-parse", "--git-common-dir"]).strip()))
+  except TaskBuilderError as error:
+    raise TaskBuilderError("invalid_repo") from error
+  if stat.S_ISLNK(marker_details.st_mode):
+    raise TaskBuilderError("invalid_repo")
+  if stat.S_ISDIR(marker_details.st_mode):
+    if not _safe_git_directory(marker) or git_dir != marker.resolve(strict=True) or common_dir != git_dir:
+      raise TaskBuilderError("invalid_repo")
+  elif stat.S_ISREG(marker_details.st_mode):
+    if not _registered_worktree(repo, git_dir, common_dir):
+      raise TaskBuilderError("invalid_repo")
+  else:
+    raise TaskBuilderError("invalid_repo")
+  _validate_git_object_store(git_dir, common_dir)
 
 
 def _run_git(repo: Path, arguments: List[str], binary: bool = False) -> Any:
@@ -77,7 +182,21 @@ def _resolve_repo(repo: str) -> Path:
     raise TaskBuilderError("invalid_repo")
   if not root:
     raise TaskBuilderError("invalid_repo")
-  return Path(root).resolve()
+  repository = Path(root).resolve()
+  try:
+    resolved.relative_to(repository)
+  except ValueError as error:
+    raise TaskBuilderError("invalid_repo") from error
+  try:
+    marker_exists = (resolved / ".git").lstat()
+  except FileNotFoundError:
+    marker_exists = None
+  except OSError as error:
+    raise TaskBuilderError("invalid_repo") from error
+  if marker_exists is not None and repository != resolved:
+    raise TaskBuilderError("invalid_repo")
+  _validate_git_layout(repository)
+  return repository
 
 
 def _resolve_revision(repo: Path, revision: str) -> str:
@@ -114,11 +233,56 @@ def _resolve_instruction(repo: Path, revision: str, supplied: Optional[str]) -> 
   return instruction + "\n"
 
 
-def _read_archive(repo: Path, revision: str) -> bytes:
+def _snapshot_tree(repo: Path, revision: str) -> bytes:
   try:
-    return _run_git(repo, ["archive", "--format=tar", revision], binary=True)
-  except TaskBuilderError:
-    raise TaskBuilderError("source_archive_failed")
+    records = _run_git(
+      repo,
+      ["ls-tree", "-rz", "--full-tree", revision, "--"],
+      binary=True,
+    )
+  except TaskBuilderError as error:
+    raise TaskBuilderError("source_archive_failed") from error
+
+  entries = []
+  for record in records.split(b"\0"):
+    if not record:
+      continue
+    metadata, separator, raw_path = record.partition(b"\t")
+    fields = metadata.split()
+    if separator != b"\t" or len(fields) != 3:
+      raise TaskBuilderError("source_archive_failed")
+    mode, object_type, object_id = fields
+    if mode not in {b"100644", b"100755"} or object_type != b"blob":
+      raise TaskBuilderError("unsupported_source_entry")
+    if not re.fullmatch(rb"[0-9a-f]{40}", object_id):
+      raise TaskBuilderError("source_archive_failed")
+    try:
+      name = os.fsdecode(raw_path)
+      _safe_member_path(name)
+      content = _run_git(repo, ["cat-file", "blob", object_id.decode("ascii")], binary=True)
+    except TaskBuilderError as error:
+      raise TaskBuilderError("source_archive_failed") from error
+    except (UnicodeError, ValueError) as error:
+      raise TaskBuilderError("unsafe_source_path") from error
+    entries.append((raw_path, name, mode, content))
+
+  entries.sort(key=lambda entry: entry[0])
+  output = io.BytesIO()
+  try:
+    with tarfile.open(fileobj=output, mode="w", format=tarfile.PAX_FORMAT) as archive:
+      for _, name, mode, content in entries:
+        info = tarfile.TarInfo(name=name)
+        info.mode = 0o755 if mode == b"100755" else 0o644
+        info.uid = 0
+        info.gid = 0
+        info.uname = ""
+        info.gname = ""
+        info.mtime = 0
+        info.size = len(content)
+        archive.addfile(info, io.BytesIO(content))
+  except (OSError, tarfile.TarError, ValueError) as error:
+    raise TaskBuilderError("source_archive_failed") from error
+  return output.getvalue()
 
 
 def _safe_member_path(name: str) -> Tuple[str, ...]:
@@ -169,140 +333,225 @@ def _write_text(path: Path, content: str, mode: Optional[int] = None) -> None:
   _write_bytes(path, content.encode("utf-8"), mode)
 
 
-def _runtime_environment(home: Path) -> Dict[str, str]:
-  return {
-    "HOME": str(home),
-    "PATH": os.environ.get("PATH", ""),
-    "TMPDIR": str(home.parent / (home.name + "-tmp")),
-    "XDG_CACHE_HOME": str(home.parent / (home.name + "-cache")),
-    "LANG": "C",
-    "LC_ALL": "C",
-  }
-
-
 def _test_script(test_command: str) -> str:
   return "\n".join([
     "#!/bin/sh",
-    "set -eu",
     "set +e",
-    test_command,
+    "sh -c " + shlex.quote(test_command),
     "status=$?",
-    "set -e",
-    "reward_file=\"${REWARD_FILE:-/logs/verifier/reward.json}\"",
-    "mkdir -p \"$(dirname \"$reward_file\")\"",
-    "if [ \"$status\" -eq 0 ]; then",
-    "  printf '{\"reward\":1}\\n' > \"$reward_file\"",
-    "else",
-    "  printf '{\"reward\":0}\\n' > \"$reward_file\"",
-    "fi",
     "exit \"$status\"",
   ]) + "\n"
 
 
-def _execute(command: List[str], cwd: Path, environment: Dict[str, str], timeout: float) -> Dict[str, Any]:
+_HARBOR_VERIFIER = "repo_to_bench.harbor_verifier:ExitCodeVerifier"
+_HARBOR_ENVIRONMENT = "docker"
+_HARBOR_PROCESS_TIMEOUT = 600.0
+_HARBOR_RESULT_KEYS = {
+  "id",
+  "started_at",
+  "updated_at",
+  "finished_at",
+  "n_total_trials",
+  "stats",
+}
+_HARBOR_STATS_KEYS = {
+  "n_completed_trials",
+  "n_errored_trials",
+  "n_running_trials",
+  "n_pending_trials",
+  "n_cancelled_trials",
+  "n_retries",
+  "evals",
+  "n_input_tokens",
+  "n_cache_tokens",
+  "n_output_tokens",
+  "cost_usd",
+}
+_HARBOR_EVAL_KEYS = {
+  "n_trials",
+  "n_errors",
+  "metrics",
+  "pass_at_k",
+  "reward_stats",
+  "exception_stats",
+}
+
+
+def _harbor_executable() -> Optional[str]:
+  configured = os.environ.get("REPO_TO_BENCH_HARBOR")
+  return configured or shutil.which("harbor")
+
+
+def _strict_object(value: Any, keys: set[str]) -> Dict[str, Any]:
+  if not isinstance(value, dict) or set(value) != keys:
+    raise ValueError("invalid Harbor result fields")
+  return value
+
+
+def _is_integer(value: Any) -> bool:
+  return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value: Any) -> bool:
+  if isinstance(value, bool) or not isinstance(value, (int, float)):
+    return False
+  if isinstance(value, int):
+    return True
+  return math.isfinite(value)
+
+
+def _parse_harbor_result(path: Path, agent: str) -> Dict[str, Any]:
+  try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    result = _strict_object(payload, _HARBOR_RESULT_KEYS)
+    for field in ("id", "started_at", "updated_at", "finished_at"):
+      if not isinstance(result[field], str) or not result[field]:
+        raise ValueError("invalid Harbor result metadata")
+    if not _is_integer(result["n_total_trials"]) or result["n_total_trials"] != 1:
+      raise ValueError("invalid Harbor trial count")
+    stats = _strict_object(result["stats"], _HARBOR_STATS_KEYS)
+    for field in (
+      "n_completed_trials",
+      "n_errored_trials",
+      "n_running_trials",
+      "n_pending_trials",
+      "n_cancelled_trials",
+      "n_retries",
+    ):
+      if not _is_integer(stats[field]) or stats[field] < 0:
+        raise ValueError("invalid Harbor stats")
+    if stats["n_completed_trials"] != 1 or any(
+      stats[field] != 0
+      for field in (
+        "n_errored_trials",
+        "n_running_trials",
+        "n_pending_trials",
+        "n_cancelled_trials",
+        "n_retries",
+      )
+    ):
+      raise ValueError("Harbor trial did not complete cleanly")
+    for field in ("n_input_tokens", "n_cache_tokens", "n_output_tokens", "cost_usd"):
+      if stats[field] is not None:
+        raise ValueError("Harbor result reports cost or tokens")
+    evals = stats["evals"]
+    if not isinstance(evals, dict) or len(evals) != 1:
+      raise ValueError("invalid Harbor evaluations")
+    eval_name, evaluation_value = next(iter(evals.items()))
+    if not isinstance(eval_name, str) or eval_name != agent + "__adhoc":
+      raise ValueError("unexpected Harbor evaluation")
+    evaluation = _strict_object(evaluation_value, _HARBOR_EVAL_KEYS)
+    if not _is_integer(evaluation["n_trials"]) or evaluation["n_trials"] != 1:
+      raise ValueError("invalid Harbor evaluation trial count")
+    if not _is_integer(evaluation["n_errors"]) or evaluation["n_errors"] != 0:
+      raise ValueError("Harbor evaluation contains errors")
+    if not isinstance(evaluation["pass_at_k"], dict):
+      raise ValueError("invalid Harbor pass-at-k data")
+    if not isinstance(evaluation["reward_stats"], dict):
+      raise ValueError("invalid Harbor reward data")
+    if not isinstance(evaluation["exception_stats"], dict) or evaluation["exception_stats"]:
+      raise ValueError("Harbor evaluation contains exceptions")
+    metrics = evaluation["metrics"]
+    if not isinstance(metrics, list) or len(metrics) != 1:
+      raise ValueError("invalid Harbor metrics")
+    metric = _strict_object(metrics[0], {"mean"})
+    if not _is_number(metric["mean"]):
+      raise ValueError("invalid Harbor mean")
+    return {"status": "passed", "mean": metric["mean"], "n_errors": evaluation["n_errors"]}
+  except (OSError, UnicodeError, ValueError, TypeError, OverflowError, json.JSONDecodeError):
+    return {"status": "invalid_result", "mean": None, "n_errors": None}
+
+
+def _run_harbor_gate(staging: Path, agent: str, timeout: float) -> Dict[str, Any]:
+  executable = _harbor_executable()
+  if executable is None:
+    return {"status": "process_error", "mean": None, "n_errors": None}
+  task_path = staging / "task"
+  jobs_dir = staging / "jobs"
+  job_name = agent + "-gate"
+  command = [
+    executable,
+    "run",
+    "--path",
+    str(task_path),
+    "--agent",
+    agent,
+    "--env",
+    _HARBOR_ENVIRONMENT,
+    "--jobs-dir",
+    str(jobs_dir),
+    "--job-name",
+    job_name,
+    "--n-attempts",
+    "1",
+    "--n-concurrent",
+    "1",
+    "--max-retries",
+    "0",
+    "--quiet",
+    "--yes",
+    "--verifier",
+    _HARBOR_VERIFIER,
+  ]
   try:
     result = subprocess.run(
       command,
-      cwd=cwd,
-      env=environment,
+      cwd=staging,
       capture_output=True,
       text=True,
-      timeout=timeout,
+      timeout=max(_HARBOR_PROCESS_TIMEOUT, timeout),
+      env=_git_environment(),
     )
   except subprocess.TimeoutExpired:
-    return {"status": "timeout", "exit_code": None}
-  except (OSError, ValueError, OverflowError):
-    return {"status": "error", "exit_code": None}
+    return {"status": "timeout", "mean": None, "n_errors": None}
+  except (OSError, UnicodeError, ValueError, OverflowError):
+    return {"status": "process_error", "mean": None, "n_errors": None}
+  if result.returncode != 0:
+    return {"status": "process_error", "mean": None, "n_errors": None}
+  result_path = jobs_dir / job_name / "result.json"
+  try:
+    details = result_path.lstat()
+    if not stat.S_ISREG(details.st_mode) or details.st_nlink != 1:
+      return {"status": "invalid_result", "mean": None, "n_errors": None}
+  except OSError:
+    return {"status": "invalid_result", "mean": None, "n_errors": None}
+  return _parse_harbor_result(result_path, agent)
+
+
+def _run_gate(staging: Path, timeout: float) -> Dict[str, Any]:
+  oracle = _run_harbor_gate(staging, "oracle", timeout)
+  nop = _run_harbor_gate(staging, "nop", timeout)
+  accepted = (
+    oracle["status"] == "passed"
+    and oracle["mean"] == 1
+    and oracle["n_errors"] == 0
+    and nop["status"] == "passed"
+    and nop["mean"] == 0
+    and nop["n_errors"] == 0
+  )
   return {
-    "status": "passed" if result.returncode == 0 else "failed",
-    "exit_code": result.returncode,
+    "schema": "repo-to-bench-dual-gate/v1",
+    "verification": "harbor-separate-exit-code",
+    "paid_model_calls": 0,
+    "oracle": oracle,
+    "nop": nop,
+    "accepted": accepted,
+    "reason": "oracle_pass_nop_fail" if accepted else "oracle_nop_gate_failed",
   }
 
 
-def _run_gate(staging: Path, test_command: str, timeout: float) -> Dict[str, Any]:
-  with tempfile.TemporaryDirectory(prefix=".repo-to-bench-gate-oracle-") as oracle_directory:
-    with tempfile.TemporaryDirectory(prefix=".repo-to-bench-gate-base-") as base_directory:
-      oracle_root = Path(oracle_directory)
-      base_root = Path(base_directory)
-      base_workspace = base_root / "workspace"
-      oracle_workspace = oracle_root / "workspace"
-      (oracle_root / "base-workspace").mkdir()
-      _write_text(oracle_root / "base-workspace" / "app.py", "")
-      archive = (staging / "source-base.tar").read_bytes()
-      _extract_archive(archive, base_workspace)
-      _extract_archive(archive, oracle_workspace)
-      base_home = base_root / "home"
-      oracle_home = oracle_root / "home"
-      base_home.mkdir()
-      oracle_home.mkdir()
-      for home in (base_home, oracle_home):
-        (home.parent / (home.name + "-tmp")).mkdir()
-        (home.parent / (home.name + "-cache")).mkdir()
-      base_environment = _runtime_environment(base_home)
-      oracle_environment = _runtime_environment(oracle_home)
-      patch_path = oracle_root / "solution" / "patch.diff"
-      solve_path = oracle_root / "solution" / "solve.sh"
-      oracle_test_path = oracle_root / "runner" / "oracle-test.sh"
-      base_test_path = base_root / "runner" / "base-test.sh"
-      test_script = (staging / "task" / "tests" / "test.sh").read_text()
-      _write_bytes(patch_path, (staging / "task" / "solution" / "patch.diff").read_bytes())
-      _write_text(solve_path, (staging / "task" / "solution" / "solve.sh").read_text(), 0o700)
-      _write_text(oracle_test_path, test_script, 0o700)
-      _write_text(base_test_path, test_script, 0o700)
-      _write_text(oracle_root / "test.sh", test_script, 0o700)
-      oracle_apply = _execute(
-        ["sh", str(solve_path)],
-        oracle_workspace,
-        {**oracle_environment, "PATCH_FILE": str(patch_path)},
-        timeout,
-      )
-      oracle_test = {"status": "not-run", "exit_code": None}
-      if oracle_apply["status"] == "passed":
-        oracle_test = _execute(
-          ["sh", str(oracle_test_path)],
-          oracle_workspace,
-          {**oracle_environment, "REWARD_FILE": str(oracle_root / "oracle-reward.json")},
-          timeout,
-        )
-      base_test = _execute(
-        ["sh", str(base_test_path)],
-        base_workspace,
-        {**base_environment, "REWARD_FILE": str(base_root / "base-reward.json")},
-        timeout,
-      )
-      oracle_status = "passed" if oracle_apply["status"] == "passed" and oracle_test["status"] == "passed" else "failed"
-      oracle_exit_code = oracle_test["exit_code"] if oracle_apply["status"] == "passed" else oracle_apply["exit_code"]
-      base_status = base_test["status"]
-      accepted = oracle_status == "passed" and base_status == "failed"
-      return {
-        "schema": "repo-to-bench-dual-gate/v1",
-        "verification": "deterministic-local",
-        "paid_model_calls": 0,
-        "oracle": {
-          "status": oracle_status,
-          "apply": oracle_apply,
-          "test": oracle_test,
-          "exit_code": oracle_exit_code,
-        },
-        "base": {
-          "status": base_status,
-          "test": base_test,
-          "exit_code": base_test["exit_code"],
-        },
-        "accepted": accepted,
-        "reason": "oracle_pass_base_fail" if accepted else "oracle_base_gate_failed",
-      }
-
-
-def _task_toml(task_name: str, output_inputs: List[str]) -> str:
-  lines = [f"schema_version = {json.dumps(HARBOR_SCHEMA_VERSION)}"]
-  if output_inputs:
-    artifacts = ", ".join(
+def _task_toml(task_name: str, output_inputs: List[str], timeout: float) -> str:
+  artifacts = [
+    '{ source = "/app", destination = "workspace" }',
+    *(
       "{ source = " + json.dumps("/app/" + value) + ", destination = " + json.dumps(value) + " }"
       for value in output_inputs
-    )
-    lines.extend(["", "artifacts = [" + artifacts + "]"])
-  lines.extend([
+    ),
+  ]
+  lines = [
+    f"schema_version = {json.dumps(HARBOR_SCHEMA_VERSION)}",
+    "",
+    "artifacts = [" + ", ".join(artifacts) + "]",
     "",
     "[task]",
     f"name = {json.dumps('repo-to-bench/' + task_name)}",
@@ -310,14 +559,15 @@ def _task_toml(task_name: str, output_inputs: List[str]) -> str:
     "description = \"Synthetic patch evaluation task\"",
     "",
     "[agent]",
-    "timeout_sec = 120.0",
+    f"timeout_sec = {timeout}",
     "",
     "[verifier]",
-    "timeout_sec = 120.0",
+    f"timeout_sec = {timeout}",
+    "environment_mode = \"separate\"",
     "",
     "[environment]",
     "workdir = \"/app\"",
-  ])
+  ]
   return "\n".join(lines) + "\n"
 
 
@@ -403,11 +653,23 @@ def _release_build_lock(lock: Path) -> None:
 
 
 def _lock_permissions(root: Path) -> None:
+  harbor_jobs = root / "jobs"
   for path in root.rglob("*"):
-    if path.is_dir():
+    if path == harbor_jobs or harbor_jobs in path.parents:
+      continue
+    try:
+      details = path.lstat()
+    except OSError as error:
+      raise TaskBuilderError("unsafe_generated_entry") from error
+    if stat.S_ISLNK(details.st_mode):
+      raise TaskBuilderError("unsafe_generated_entry")
+    if stat.S_ISDIR(details.st_mode):
       path.chmod(0o700)
-    elif path.is_file():
-      path.chmod(0o700 if path.suffix == ".sh" else 0o600)
+      continue
+    if not stat.S_ISREG(details.st_mode) or details.st_nlink != 1:
+      raise TaskBuilderError("unsafe_generated_entry")
+    mode = 0o700 if details.st_mode & stat.S_IXUSR else 0o600
+    path.chmod(mode)
 
 
 def _publish(staging: Path, run_root: Path, accepted: bool) -> None:
@@ -469,8 +731,8 @@ def build_task(
   )
   if not patch:
     raise TaskBuilderError("empty_revision_range")
-  archive = _read_archive(repository, base)
-  head_archive = _read_archive(repository, head)
+  archive = _snapshot_tree(repository, base)
+  head_archive = _snapshot_tree(repository, head)
   try:
     with tempfile.TemporaryDirectory(prefix=".repo-to-bench-head-") as directory:
       head_workspace = Path(directory) / "workspace"
@@ -504,19 +766,23 @@ def build_task(
   try:
     _write_bytes(staging / "source-base.tar", archive)
     task = staging / "task"
-    _write_text(task / "task.toml", _task_toml(task_name, inputs))
+    _write_text(task / "task.toml", _task_toml(task_name, inputs, timeout))
     _write_text(task / "instruction.md", task_instruction)
     _write_text(
       task / "environment" / "Dockerfile",
       f"FROM {HARBOR_IMAGE}\nRUN apt-get update && apt-get install -y --no-install-recommends git={GIT_PACKAGE_VERSION} && rm -rf /var/lib/apt/lists/*\nWORKDIR /app\nCOPY workspace/ /app/\n",
     )
     _extract_archive(archive, task / "environment" / "workspace")
+    _write_text(
+      task / "tests" / "Dockerfile",
+      f"FROM {HARBOR_IMAGE}\nRUN apt-get update && apt-get install -y --no-install-recommends git={GIT_PACKAGE_VERSION} && rm -rf /var/lib/apt/lists/*\nWORKDIR /app\nCOPY test.sh /tests/test.sh\nRUN chmod 755 /tests/test.sh\n",
+    )
     _write_text(task / "tests" / "test.sh", _test_script(test_command), 0o755)
     _write_text(task / "solution" / "solve.sh", "#!/bin/sh\nset -eu\ngit apply --binary \"${PATCH_FILE:-/solution/patch.diff}\"\n", 0o755)
     _write_bytes(task / "solution" / "patch.diff", patch)
     _scan_artifacts(staging)
-    gate = _run_gate(staging, test_command, timeout)
-    _scan_artifacts(staging)
+    gate = _run_gate(staging, timeout)
+    _scan_artifacts(task)
     manifest = {
       "schema": "repo-to-bench-task-manifest/v1",
       "format": {

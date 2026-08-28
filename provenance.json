@@ -11,6 +11,8 @@
     {"path": "src/repo_to_bench/__main__.py", "origin": "new-original"},
     {"path": "src/repo_to_bench/cli.py", "origin": "new-original"},
     {"path": "src/repo_to_bench/foundation.py", "origin": "new-original"},
+    {"path": "src/repo_to_bench/harbor_verifier.py", "origin": "new-original"},
+    {"path": "tests/fake_harbor.py", "origin": "new-original"},
     {"path": "tests/test_ci_contract.py", "origin": "new-original"},
     {"path": "tests/test_cli.py", "origin": "new-original"},
     {"path": "src/repo_to_bench/task_builder.py", "origin": "new-original"},

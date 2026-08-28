@@ -17,7 +17,7 @@ class CiContractTests(unittest.TestCase):
     workflow = WORKFLOW.read_text(encoding="utf-8")
     project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     self.assertIn("fetch-depth: 0", workflow)
-    self.assertIn("python-version: [\"3.9\", \"3.11\"]", workflow)
+    self.assertIn("python-version: [\"3.9\", \"3.11\", \"3.14\"]", workflow)
     self.assertNotIn("HOME: ${{ runner.temp }}", workflow)
     self.assertIn("HOME=$RUNNER_TEMP/isolated-home", workflow)
     self.assertIn("GITHUB_ENV", workflow)
@@ -25,13 +25,14 @@ class CiContractTests(unittest.TestCase):
     self.assertIn("python scripts/release_scan.py", workflow)
     self.assertIn("Operating System :: POSIX", project)
     self.assertNotIn("Operating System :: Microsoft :: Windows", project)
+    self.assertIn('harbor = ["harbor==0.22.0"]', project)
     self.assertTrue(SCANNER.is_file())
 
   def test_ci_runs_pinned_harbor_e2e_on_supported_python(self):
     workflow = WORKFLOW.read_text(encoding="utf-8")
     self.assertIn("  harbor-e2e:", workflow)
     self.assertIn('python-version: "3.13"', workflow)
-    self.assertIn('python -m pip install "harbor==0.22.0"', workflow)
+    self.assertIn('python -m pip install ".[harbor]"', workflow)
     self.assertIn("REPO_TO_BENCH_INSTALLED_E2E: \"1\"", workflow)
     self.assertIn("python -m unittest tests.harbor_e2e", workflow)
 
