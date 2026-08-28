@@ -1,0 +1,1 @@
+{"timestamp":"2026-08-28T00:00:00Z","payload":{"type":"patch_apply_end","call_id":"patch-1","success":true,"changes":{"app.py":{"type":"update","content":"def answer():\n  return \"new\"\n"},"notes.txt":{"type":"add","content":"synthetic replay\n"}}}}

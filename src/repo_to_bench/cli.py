@@ -3,6 +3,7 @@ import json
 from typing import Optional, Sequence
 
 from .foundation import FoundationError, clean_directory, redact_path, stage_input
+from .replay import ReplayError, replay_trajectory
 from .task_builder import TaskBuilderError, build_task
 
 
@@ -31,6 +32,12 @@ def build_parser() -> argparse.ArgumentParser:
   build.add_argument("--output-input", "--artifact", dest="output_inputs", action="append", default=[])
   build.add_argument("--task-name", default="synthetic-task")
   build.add_argument("--timeout", type=float, default=30.0)
+  replay = commands.add_parser("replay")
+  replay.add_argument("--workspace", required=True)
+  replay.add_argument("--trajectory", required=True)
+  replay.add_argument("--agent", choices=("claude-code", "codex"), required=True)
+  replay.add_argument("--output-dir", required=True)
+  replay.add_argument("--diagnostic-override", action="store_true")
   return parser
 
 
@@ -74,6 +81,20 @@ def main(arguments: Optional[Sequence[str]] = None) -> int:
       return 1
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
     return 0
+  if options.command == "replay":
+    try:
+      result = replay_trajectory(
+        workspace=options.workspace,
+        trajectory=options.trajectory,
+        output_dir=options.output_dir,
+        agent=options.agent,
+        diagnostic_override=options.diagnostic_override,
+      )
+    except ReplayError as error:
+      print(json.dumps({"error": {"category": error.category}}, sort_keys=True, separators=(",", ":")))
+      return 1
+    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    return 0 if result["status"] == "COMPLETE" or options.diagnostic_override and result["status"] == "INCOMPLETE" else 1
   if options.command == "clean":
     if not options.recursive:
       print(json.dumps({"error": {"category": "recursive_confirmation_required", "path": redact_path(options.path)}}, sort_keys=True, separators=(",", ":")))

@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"bash-1","name":"Bash","input":{"command":"git apply change.patch"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"bash-1","content":"done"}]}}

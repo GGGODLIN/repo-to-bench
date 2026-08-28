@@ -1,0 +1,4 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"edit-1","name":"Edit","input":{"file_path":"app.py","old_string":"return \"old\"","new_string":"return \"new\""}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"edit-1","content":"updated"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"write-1","name":"Write","input":{"file_path":"notes.txt","content":"synthetic replay\n"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"write-1","content":"created"}]}}
