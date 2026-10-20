@@ -4,6 +4,10 @@
 
 **把 Git history 裡的一次真實修正，轉成可以重複執行的 coding-agent benchmark。**
 
+https://github.com/user-attachments/assets/712d93c7-4a24-46c8-9324-0c63515a05e9
+
+影片裡的排名、agent 和他們的答案都是虛構示範；那一行修正取自 repo 自帶的合成範例。
+
 你剛修好一個真實 repo 裡的 bug。手上有修正前的 commit、修正後的 commit，以及能證明兩者差異的 tests。現在你想知道：coding agent 能不能在看不到原始 patch 的情況下解出同一個問題？如果同時測幾個 agents，結果是否完整，解答有沒有外洩，reviewer 又會不會因為知道作者身分而產生偏見？
 
 `repo-to-bench` 會把這次修改包成 benchmark task。你提供 repo、base revision、已知正確的 revision 與 test command。任何 agent 結果被採用之前，它會先確認 base 會失敗，而且已知正確的解法會通過。

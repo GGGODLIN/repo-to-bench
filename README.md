@@ -4,6 +4,10 @@
 
 **Turn a real fix from your Git history into a repeatable coding-agent benchmark.**
 
+https://github.com/user-attachments/assets/e5bd5519-20d7-4b10-b2a4-e929f6bbf193
+
+The ranking, the agents and their answers in the video are a made-up demo. The one-line fix is the repo's own synthetic example.
+
 You fixed a bug in a real repository. You have the commit before the fix, the commit after it, and tests that prove the difference. Now you want to know whether a coding agent could solve the same problem without seeing your patch—and whether several agents can be compared without missing runs, leaked solutions, or reviewer bias.
 
 `repo-to-bench` packages that change as a benchmark task. Point it at the repository, the base revision, the known-good revision, and a test command. It checks that the base fails and the known-good solution passes before any agent result can count.
